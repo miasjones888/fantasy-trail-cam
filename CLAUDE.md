@@ -17,7 +17,7 @@ No test suite yet. Validate changes with `npm run build` (catches type errors) p
 
 A production build of a design prototype from `claude.ai/design`. The original prototype lives in `project/Station Four - Live Testbed.html` (self-contained HTML/CSS/JS). That file is the **visual source of truth** — when changing UI, match its palette, typography, layout, and transformation behavior. The chat transcripts in `chats/` explain *why* the design landed where it did — read them before making design decisions (especially `chats/chat1.md`).
 
-Reference images from the original design session are in `project/uploads/`.
+Reference images from the original design session are in `project/uploads/`. A textual reference for the running build (per-station state, archive panel, tweaks overlay) is captured in `project/prototype-reference.md` — read that file when reasoning about the live UI.
 
 ## Architecture — non-obvious pieces
 
