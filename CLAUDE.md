@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Workflow rule — always land via PR
+
+**Never push directly to `main`.** Every change (even a one-line fix, even a HANDOFF update) must land through a pull request that the human reviews. Work on the task branch, push it, open a PR via the GitHub MCP, and stop there. Do not fast-forward, merge, or push `main` yourself. If the user says "push to main," interpret that as "get this in front of me to review" — open a PR and ask.
+
 ## Commands
 
 ```bash
