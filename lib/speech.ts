@@ -52,7 +52,7 @@ export async function recognize(
 
   return {
     transcripts,
-    hasSpeech: transcripts.some((t) => t.text.length > 0),
+    hasSpeech: transcripts.some((t: { text: string }) => t.text.length > 0),
     rawLabels: [],
   };
 }
