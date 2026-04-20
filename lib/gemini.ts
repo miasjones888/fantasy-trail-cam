@@ -132,6 +132,12 @@ export interface VisionFallback {
   delirLabels: string[];
 }
 
+// Shared creative-analysis shape consumed by the Station renderer. The
+// motion/speech pipeline produces a partial version (species + action from
+// Video Intelligence, mythology text fetched lazily from /api/mythology) and
+// the /api/analyze vision fallback returns the full shape in one call.
+export type AnalyzeResponse = VisionFallback;
+
 export async function visionFallback(
   base64Jpeg: string,
   station: { name: string; subject: string; description: string }

@@ -8,6 +8,34 @@ import { subjectSVG } from "@/lib/silhouettes";
 import { drawSyntheticBg } from "@/lib/syntheticBg";
 import { AMBIENT } from "@/lib/transcripts";
 import type { AnalyzeResponse } from "@/lib/gemini";
+import { startRollingClip } from "@/lib/clipRecorder";
+
+interface LiveStatus {
+  isLive?: boolean;
+  title?: string | null;
+  concurrentViewers?: number | null;
+  channel?: string | null;
+}
+
+interface MotionObjectLite {
+  entity: string;
+  confidence: number;
+}
+
+interface MotionApiResponse {
+  events?: Array<{ description: string; confidence: number }>;
+  objects?: MotionObjectLite[];
+  hasMotion?: boolean;
+  blocked?: boolean;
+  error?: string;
+}
+
+interface SpeechApiResponse {
+  transcripts?: Array<{ text: string; confidence: number }>;
+  hasSpeech?: boolean;
+  blocked?: boolean;
+  error?: string;
+}
 
 interface Props {
   station: StationConfig;
@@ -49,6 +77,10 @@ export const Station = forwardRef<StationHandle, Props>(function Station({ stati
   const [aiState, setAiState] = useState<"idle" | "working">("idle");
   const [species, setSpecies] = useState<string | null>(null);
   const [speciesConf, setSpeciesConf] = useState<number>(0);
+  const [liveStatus, setLiveStatus] = useState<LiveStatus | null>(null);
+  // Cloud Video Intelligence can be blocked on the project; when it is, we
+  // fall back to the Gemini /api/analyze vision endpoint.
+  const motionBlockedRef = useRef(false);
 
   // Latest analysis result (may set the glitch details)
   const latestAnalysisRef = useRef<AnalyzeResponse | null>(null);
@@ -302,21 +334,76 @@ export const Station = forwardRef<StationHandle, Props>(function Station({ stati
         mythRef.current.textContent = myth;
       }
 
-      // Push AI-generated glitch transcript lines
-      const lines = glitchAnalysisRef.current?.glitchLines?.length
+      // Per-glitch token — lets the async mythology response detect that it
+      // was issued for THIS glitch and not a later same-mode one. Using the
+      // startTime as a token works because every glitch sets a new value.
+      const glitchToken = glitchStartRef.current;
+
+      // Push AI-generated glitch transcript lines (seed with whatever we have;
+      // /api/mythology may replace these below once it resolves). We stash
+      // the seed timeouts so the mythology handler can cancel them if real
+      // lines arrive before the seeds have all fired.
+      const seedLines = glitchAnalysisRef.current?.glitchLines?.length
         ? glitchAnalysisRef.current.glitchLines
         : ["[ANOMALY]", "[classifier fault]", "[UNIDENTIFIED]"];
-      lines.slice(0, 3).forEach((line, i) => {
-        setTimeout(() => pushLine(line, true), i * 900 + 200);
+      const seedTimeouts: ReturnType<typeof setTimeout>[] = [];
+      seedLines.slice(0, 3).forEach((line: string, i: number) => {
+        seedTimeouts.push(setTimeout(() => pushLine(line, true), i * 900 + 200));
       });
 
-      // Also generate delir labels via the secondary endpoint if needed (fire-and-forget)
-      if (glitchModeRef.current === "delir" && !glitchAnalysisRef.current?.delirLabels?.length) {
-        fetch("/api/glitch", {
+      // Fetch mythology + glitchLines + delirLabels in one call. If the
+      // event was replayed from the archive it already has everything, so skip.
+      const need =
+        !glitchAnalysisRef.current?.mythology ||
+        !glitchAnalysisRef.current?.glitchLines?.length ||
+        (glitchModeRef.current === "delir" && !glitchAnalysisRef.current?.delirLabels?.length);
+      if (need) {
+        const capturedMode = glitchModeRef.current;
+        const capturedSpecies = glitchAnalysisRef.current?.species || species;
+        const capturedAction = glitchAnalysisRef.current?.action || null;
+        fetch("/api/mythology", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "delir", subject: station.subject }),
-        }).catch(() => {});
+          body: JSON.stringify({
+            camId: station.id,
+            mode: capturedMode,
+            species: capturedSpecies,
+            action: capturedAction,
+          }),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            // Bail if this response is for a glitch that has already ended
+            // or been superseded by a new one (same mode is not enough).
+            if (!data) return;
+            if (glitchStartRef.current !== glitchToken) return;
+            if (stateRef.current !== "glitching") return;
+
+            const existing = glitchAnalysisRef.current;
+            glitchAnalysisRef.current = {
+              detected: existing?.detected ?? true,
+              species: existing?.species ?? capturedSpecies ?? null,
+              confidence: existing?.confidence ?? 0.75,
+              action: existing?.action ?? capturedAction,
+              glitchLines: data.glitchLines || existing?.glitchLines || [],
+              mythology: data.mythology || existing?.mythology || "",
+              delirLabels: data.delirLabels || existing?.delirLabels || [],
+            };
+            if (mythRef.current && data.mythology) mythRef.current.textContent = data.mythology;
+
+            // Replace placeholder transcript lines with the generated ones.
+            const realLines: string[] = Array.isArray(data.glitchLines) ? data.glitchLines : [];
+            if (realLines.length) {
+              seedTimeouts.forEach(clearTimeout);
+              realLines.slice(0, 3).forEach((line, i) => {
+                setTimeout(() => {
+                  if (glitchStartRef.current !== glitchToken) return;
+                  pushLine(line, true);
+                }, i * 700 + 100);
+              });
+            }
+          })
+          .catch(() => {});
       }
     }
 
@@ -326,6 +413,9 @@ export const Station = forwardRef<StationHandle, Props>(function Station({ stati
       const analysis = glitchAnalysisRef.current;
       stateRef.current = "live";
       glitchModeRef.current = null;
+      // Invalidate the glitch token so any in-flight mythology response
+      // for this glitch won't re-enter state after the anomaly is archived.
+      glitchStartRef.current = 0;
 
       if (statusRef.current) statusRef.current.innerHTML = `<span class="rec">REC</span>`;
       if (chRef.current) { chRef.current.classList.remove("anom"); chRef.current.classList.add("live"); }
@@ -398,8 +488,10 @@ export const Station = forwardRef<StationHandle, Props>(function Station({ stati
     const base = { rare: 26000, normal: 13000, dense: 6500 }[tweaksRef.current.freq] || 13000;
     nextEventAtRef.current = performance.now() + base + Math.random() * 4000;
 
-    // Gemini frame analysis loop — every 10s send the current composite to /api/analyze
-    const aiInterval = setInterval(async () => {
+    // Gemini vision fallback — only runs if Cloud Video Intelligence is
+    // blocked or failing. Pulls a single composite frame and lets Gemini do
+    // motion+species+mythology in one shot. Polls at a slow cadence.
+    async function runVisionFallback() {
       if (document.hidden) return;
       const frame = snapshotFrame();
       if (!frame) return;
@@ -415,19 +507,20 @@ export const Station = forwardRef<StationHandle, Props>(function Station({ stati
           latestAnalysisRef.current = data;
           if (data.species) setSpecies(data.species);
           setSpeciesConf(data.confidence);
-          // If AI detects something with high confidence AND we're live AND not scheduled imminently,
-          // advance the next event so it fires within a couple seconds — "Gemini saw something".
           if (data.detected && data.confidence > 0.65 && stateRef.current === "live") {
             const inTwo = performance.now() + 1800 + Math.random() * 2400;
             if (inTwo < nextEventAtRef.current) nextEventAtRef.current = inTwo;
           }
         }
-      } catch (err) {
-        // silent — fallback already built into the analysis
+      } catch {
+        // silent
       } finally {
         setAiState("idle");
       }
-    }, 10000);
+    }
+    const fallbackInterval = setInterval(() => {
+      if (motionBlockedRef.current) runVisionFallback();
+    }, 12000);
 
     // Expose trigger to imperative handle
     (feedRef.current as any).__triggerGlitch = triggerGlitch;
@@ -443,12 +536,182 @@ export const Station = forwardRef<StationHandle, Props>(function Station({ stati
     return () => {
       cancelAnimationFrame(raf);
       clearInterval(ambientInterval);
-      clearInterval(aiInterval);
+      clearInterval(fallbackInterval);
       clearTimeout(seedTimeout);
       ro.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [station.id, streamOk]);
+
+  // Video-clip loop → Cloud Video Intelligence. Captures rolling 8s WebM
+  // clips from the canvas composite and posts them to /api/motion. When the
+  // API flags motion on an animal-like entity, we advance the next
+  // transformation event and cache the species for the mythology call.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || streamOk !== "ok") return;
+    let stopped = false;
+    let stopRecorder: (() => void) | null = null;
+    try {
+      const stream = (canvas as any).captureStream
+        ? (canvas as HTMLCanvasElement).captureStream(15)
+        : null;
+      if (!stream) {
+        // Without captureStream we can't feed /api/motion; route this
+        // station to the /api/analyze vision fallback instead of leaving
+        // both loops dormant.
+        motionBlockedRef.current = true;
+        return;
+      }
+      stopRecorder = startRollingClip(stream, {
+        durationMs: 8000,
+        mimeType: "video/webm;codecs=vp9",
+        onClip: async (base64) => {
+          if (stopped || document.hidden) return;
+          if (motionBlockedRef.current) return; // already fell back to Gemini vision
+          try {
+            setAiState("working");
+            const res = await fetch("/api/motion", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ video: base64 }),
+            });
+            const data: MotionApiResponse = await res.json();
+            if (data.blocked) {
+              motionBlockedRef.current = true;
+              return;
+            }
+            if (!res.ok) return;
+            const obj = data.objects?.[0];
+            if (obj?.entity) {
+              setSpecies(obj.entity);
+              setSpeciesConf(obj.confidence);
+              latestAnalysisRef.current = {
+                detected: true,
+                species: obj.entity,
+                confidence: obj.confidence,
+                action: data.events?.[0]?.description || null,
+                glitchLines: [],
+                mythology: "",
+                delirLabels: [],
+              };
+            }
+            if (data.hasMotion && stateRef.current === "live") {
+              const soon = performance.now() + 1500;
+              if (soon < nextEventAtRef.current) nextEventAtRef.current = soon;
+            }
+          } catch {
+            // silent — keep trying with the next clip
+          } finally {
+            setAiState("idle");
+          }
+        },
+        onError: () => {
+          // MediaRecorder not supported / unavailable — rely on vision fallback
+          motionBlockedRef.current = true;
+        },
+      });
+    } catch {
+      motionBlockedRef.current = true;
+    }
+    return () => {
+      stopped = true;
+      stopRecorder?.();
+    };
+  }, [station.id, streamOk]);
+
+  // Audio-clip loop → Cloud Speech-to-Text. Routes the <video> audio through
+  // a WebAudio graph so we can both capture it for STT and (optionally) play
+  // it back through the user's speakers. We deliberately leave the user-side
+  // gain at 0 because four stations playing at once would be unusable —
+  // users can raise volume later via the station's own controls.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || streamOk !== "ok") return;
+    let stopped = false;
+    let stopRecorder: (() => void) | null = null;
+    let audioCtx: AudioContext | null = null;
+    try {
+      const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!AC) return;
+      audioCtx = new AC();
+      const source = audioCtx!.createMediaElementSource(video);
+      const dest = audioCtx!.createMediaStreamDestination();
+      const gain = audioCtx!.createGain();
+      gain.gain.value = 0; // silent playback; capture still works
+      source.connect(dest);
+      source.connect(gain).connect(audioCtx!.destination);
+      stopRecorder = startRollingClip(dest.stream, {
+        durationMs: 5000,
+        mimeType: "audio/webm;codecs=opus",
+        onClip: async (base64) => {
+          if (stopped || document.hidden) return;
+          if (stateRef.current === "glitching") return; // don't overwrite glitch lines
+          try {
+            const res = await fetch("/api/speech", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                audio: base64,
+                encoding: "WEBM_OPUS",
+                sampleRateHertz: 48000,
+              }),
+            });
+            if (!res.ok) return;
+            const data: SpeechApiResponse = await res.json();
+            if (data.blocked) return;
+            const text = data.transcripts?.[0]?.text?.trim();
+            if (text && text.length > 0) pushLineToTranscript(text, false);
+          } catch {
+            // silent
+          }
+        },
+        onError: () => {
+          // MediaRecorder not available; keep the ambient pool running
+        },
+      });
+    } catch {
+      // createMediaElementSource can throw if called twice on the same element
+      // (React strict mode re-mount) — silently skip.
+    }
+    return () => {
+      stopped = true;
+      stopRecorder?.();
+      if (audioCtx && audioCtx.state !== "closed") {
+        audioCtx.close().catch(() => {});
+      }
+    };
+  }, [station.id, streamOk]);
+
+  // Live-status polling: title + concurrent viewers from YouTube Data API.
+  useEffect(() => {
+    let cancelled = false;
+    async function tick() {
+      try {
+        const res = await fetch(`/api/live-status/${station.id}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setLiveStatus(data);
+      } catch {
+        // silent
+      }
+    }
+    tick();
+    const id = setInterval(tick, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [station.id]);
+
+  // Stable setter so the audio-clip loop can push transcript lines without
+  // capturing a stale function closure.
+  function pushLineToTranscript(text: string, glitch: boolean) {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const ts = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    setTranscript((prev) => [{ ts, text, glitch }, ...prev].slice(0, 4));
+  }
 
   useImperativeHandle(ref, () => ({
     triggerGlitch: (forceMode?: TransformMode, analysis?: AnalyzeResponse) => {
@@ -495,7 +758,13 @@ export const Station = forwardRef<StationHandle, Props>(function Station({ stati
             <span className="rec">REC</span>
           </span>
           <span className="bl" ref={tsRef}>—</span>
-          <span className="br">{station.sub}</span>
+          <span className="br">
+            {station.sub}
+            {liveStatus?.concurrentViewers != null && (
+              <> · {liveStatus.concurrentViewers.toLocaleString()} viewers</>
+            )}
+            {liveStatus && liveStatus.isLive === false && <> · OFFLINE</>}
+          </span>
         </div>
         {species && (
           <div className={`species-tag ${speciesConf < 0.5 ? "unknown" : ""}`}>
