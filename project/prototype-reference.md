@@ -1,27 +1,16 @@
 # Prototype reference
 
-Visual reference for the Station Four live testbed, captured from the running
+Textual reference for the Station Four live testbed, captured from the running
 production build. Use this alongside `project/Station Four - Live Testbed.html`
 (the original self-contained prototype) and `chats/chat1.md` (design rationale).
 
-If you cannot see the referenced image files, the descriptions below contain
-enough detail to reproduce the layout, palette, typography, and per-station
-state without the pixels.
-
-## Image files
-
-Drop the screenshots into `project/uploads/` with these names so the descriptions
-below stay accurate:
-
-- `prototype-full-view.png` — four-station grid with archive panel and tweaks overlay
-- `prototype-detail-tweaks.png` — zoom onto CAM-03 / CAM-04 and the tweaks panel
-
-(Paths are placeholders. The textual descriptions are authoritative until the
-files are committed.)
+No image files accompany this doc — the descriptions below are authoritative
+and contain enough detail to reproduce the layout, palette, typography, and
+per-station state.
 
 ---
 
-## Screenshot 1 — full app, four stations + archive + tweaks
+## View 1 — full app, four stations + archive + tweaks
 
 ### Page chrome
 
@@ -117,7 +106,7 @@ on hover.
 
 ---
 
-## Screenshot 2 — CAM-03 / CAM-04 detail with tweaks panel
+## View 2 — CAM-03 / CAM-04 detail with tweaks panel
 
 Same visual language, zoomed in on the bottom row and the tweaks overlay. Adds
 transcript detail for CAM-04 not fully visible in screenshot 1:
