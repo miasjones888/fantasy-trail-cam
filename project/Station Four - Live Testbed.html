@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Station Four · Live Testbed</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=EB+Garamond:ital@0;1&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --serif: 'EB Garamond', Georgia, serif;
+    --ground: #e8e2d0; --paper: #f1ecdd; --ink: #232821;
+    --dim: #6b6f68; --rule: #b8b09e;
+    --forest: #4a5c52; --teal: #6b7d80; --plum: #7d6a85;
+    --lichen: #9aa68a; --ir: #ff3d7f; --phos: #7fd87a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #1a1c1a; color: var(--ink); font-family: var(--mono); overflow-x: hidden; }
+  .shell { min-height: 100vh; display: grid; grid-template-columns: 1fr 320px; }
+  .main { background: var(--ground); padding: 24px 28px; min-width: 0; }
+  .archive { background: #f5f1e4; border-left: 1px solid var(--rule); padding: 20px 18px; overflow-y: auto; max-height: 100vh; position: sticky; top: 0; }
+  header.top { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 14px; border-bottom: 2px solid var(--ink); margin-bottom: 20px; }
+  header.top h1 { font-family: var(--serif); font-weight: 500; font-size: 30px; margin: 0; letter-spacing: -0.5px; }
+  header.top h1 em { color: var(--ir); font-style: italic; }
+  header.top .meta { font-size: 10px; color: var(--dim); letter-spacing: 1.5px; text-align: right; line-height: 1.6; }
+  .sub { font-size: 11px; line-height: 1.6; color: var(--ink); max-width: 780px; margin-bottom: 24px; }
+  .sub em { color: var(--forest); font-style: italic; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-bottom: 28px; }
+  .station { background: #1a1c1a; border: 1px solid #0a0a08; box-shadow: 0 6px 18px rgba(0,0,0,0.4); position: relative; overflow: hidden; }
+  .feed { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; overflow: hidden; }
+  .feed canvas.bg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .feed svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .feed .scanlines { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.14) 0 1px, transparent 1px 3px); opacity: .8; }
+  .feed .vignette { position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,.55) 100%); }
+  .feed .hud { position: absolute; inset: 0; pointer-events: none; font-family: var(--mono); font-size: 10px; color: #d8d0c2; text-shadow: 1px 1px 0 rgba(0,0,0,0.8); }
+  .hud .tl { position: absolute; top: 8px; left: 10px; letter-spacing: 1.5px; }
+  .hud .tr { position: absolute; top: 8px; right: 10px; letter-spacing: 1.5px; }
+  .hud .bl { position: absolute; bottom: 8px; left: 10px; letter-spacing: 1.5px; }
+  .hud .br { position: absolute; bottom: 8px; right: 10px; letter-spacing: 1.5px; }
+  .hud .rec { display: inline-flex; align-items: center; gap: 4px; }
+  .hud .rec::before { content:''; width: 6px; height: 6px; background: var(--ir); border-radius: 50%; animation: blink 1.2s infinite; }
+  @keyframes blink { 50% { opacity: .3; } }
+  .station .ch { padding: 6px 10px; font-size: 10px; color: #d8d0c2; display: flex; justify-content: space-between; align-items: center; background: #0e100e; border-top: 1px solid #2a2d2a; letter-spacing: 1px; }
+  .station .ch .dot { width: 6px; height: 6px; border-radius: 50%; background: #555; display: inline-block; margin-right: 6px; }
+  .station .ch.live .dot { background: var(--phos); box-shadow: 0 0 6px var(--phos); }
+  .station .ch.anom .dot { background: var(--ir); box-shadow: 0 0 8px var(--ir); animation: blink .6s infinite; }
+
+  .transcript { background: #0a0e0c; border-top: 1px solid #1a2218; padding: 8px 10px; font-size: 10px; color: var(--phos); text-shadow: 0 0 3px rgba(127,216,122,.4); min-height: 52px; font-family: var(--mono); line-height: 1.5; overflow: hidden; }
+  .transcript .glitch { color: var(--ir); text-shadow: 0 0 4px var(--ir); }
+  .transcript .ts { color: #4a6a4a; margin-right: 4px; }
+  .transcript .q { color: #a8c8a8; }
+
+  /* Tracker boxes */
+  .tracker rect { fill: none; stroke: var(--phos); stroke-width: 1; }
+  .tracker .lbl { fill: var(--phos); font-family: var(--mono); font-size: 9px; }
+  .tracker .rejected { stroke-dasharray: 1 4; opacity: .45; }
+  .tracker .glitched { stroke: var(--ir); }
+  .tracker .glitched .lbl { fill: var(--ir); }
+
+  /* Transformation layer — the organ silhouette + sprouting */
+  .xform { mix-blend-mode: screen; }
+
+  /* Archive panel */
+  .archive h2 { font-family: var(--serif); font-weight: 500; font-size: 18px; margin: 0 0 4px; letter-spacing: -0.3px; }
+  .archive .ah { font-size: 9px; color: var(--dim); letter-spacing: 2px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px dashed var(--rule); }
+  .archive .empty { font-size: 10px; color: var(--dim); font-style: italic; padding: 20px 0; text-align: center; }
+
+  .thumb-strip { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 12px; border-bottom: 1px dashed var(--rule); margin-bottom: 14px; }
+  .thumb-strip::-webkit-scrollbar { height: 4px; } .thumb-strip::-webkit-scrollbar-thumb { background: var(--rule); }
+  .thumb { flex: 0 0 72px; height: 52px; position: relative; cursor: pointer; border: 1px solid transparent; background: #000; overflow: hidden; }
+  .thumb:hover { border-color: var(--ir); }
+  .thumb .tl-ts { position: absolute; top: 1px; left: 2px; font-size: 7px; color: var(--phos); letter-spacing: .5px; }
+  .thumb .tl-cam { position: absolute; bottom: 1px; right: 2px; font-size: 7px; color: var(--ir); letter-spacing: .5px; }
+
+  .feed-list { display: flex; flex-direction: column; gap: 10px; }
+  .anom { background: #fff; border: 1px solid var(--rule); padding: 10px 12px; font-size: 10.5px; line-height: 1.55; position: relative; cursor: pointer; transition: border-color .15s; }
+  .anom:hover { border-color: var(--ir); }
+  .anom .ah-row { display: flex; justify-content: space-between; gap: 6px; font-size: 9px; color: var(--dim); letter-spacing: 1px; margin-bottom: 4px; }
+  .anom .ah-row .cam { color: var(--ir); font-weight: 700; }
+  .anom .title { font-family: var(--serif); font-size: 13px; font-style: italic; margin-bottom: 3px; }
+  .anom .body { color: #333; }
+  .anom .glitch-snip { margin-top: 5px; font-family: var(--mono); font-size: 9.5px; color: var(--ir); background: #0a0e0c; padding: 3px 6px; }
+  .anom .glitch-snip .dim { color: #4a6a4a; }
+
+  .counter { font-family: var(--serif); font-size: 44px; color: var(--ir); letter-spacing: -1px; line-height: 1; }
+  .counter small { font-family: var(--mono); font-size: 10px; color: var(--dim); letter-spacing: 2px; display: block; margin-top: 6px; }
+
+  /* Tweaks */
+  .tweaks { position: fixed; bottom: 20px; left: 20px; z-index: 100; background: var(--paper);
+    color: var(--ink); border: 1px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
+    font-family: var(--mono); font-size: 11px; padding: 12px 14px; width: 260px; }
+  .tweaks h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: 2px; border-bottom: 1px solid var(--ink); padding-bottom: 4px; }
+  .tweaks label { display: block; margin: 10px 0 4px; font-size: 9px; letter-spacing: 1.5px; color: var(--dim); }
+  .tweaks .row { display: flex; gap: 3px; flex-wrap: wrap; }
+  .tweaks .opt { flex: 1; min-width: 0; padding: 4px 6px; border: 1px solid var(--rule); font-size: 9px; text-align: center; cursor: pointer; letter-spacing: .8px; background: #fff; white-space: nowrap; }
+  .tweaks .opt.active { border-color: var(--ink); box-shadow: 2px 2px 0 var(--ink); background: var(--ground); }
+  .tweaks button.trigger { display: block; width: 100%; margin-top: 10px; padding: 6px; background: var(--ir); color: #fff; border: none; font-family: var(--mono); font-size: 10px; letter-spacing: 2px; cursor: pointer; }
+  .tweaks button.trigger:hover { background: #d82a66; }
+
+  .legend { font-size: 10px; color: var(--dim); line-height: 1.7; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--rule); }
+  .legend b { color: var(--ink); letter-spacing: 1px; }
+
+  .note-source { margin-top: 28px; font-size: 10px; color: var(--dim); line-height: 1.65; padding: 14px; background: #fff; border: 1px dashed var(--rule); max-width: 780px; }
+  .note-source b { color: var(--ink); letter-spacing: 1.5px; }
+  .note-source code { background: var(--ground); padding: 1px 5px; color: var(--ink); font-size: 9.5px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="main">
+    <header class="top">
+      <div>
+        <h1>Station Four · <em>live testbed</em></h1>
+        <div class="sub">
+          Four live feeds, running as normal. Motion triggers a <em>transformation event</em> — a hallucination lasting 3–6 seconds, archived, and the feed returns. Each station argues for a different <em>mode</em> of mythology. The archive panel (right) shows captured anomalies in whichever <em>mode</em> you select.
+        </div>
+      </div>
+      <div class="meta">
+        EST. 2026 · SYNDICATE FEED<br/>
+        <span id="clock">—</span><br/>
+        <span id="anomCountHeader">0</span> ANOMALIES TODAY
+      </div>
+    </header>
+
+    <div class="grid" id="grid">
+      <!-- stations render here -->
+    </div>
+
+    <div class="note-source">
+      <b>SOURCE FEEDS (PRODUCTION NOTE)</b><br/>
+      Stations are wired to four explore.org live cams: <code>mission-wolf-zeab</code>, <code>aurora-cam</code>, <code>muskox-cam</code>, plus a fourth TBD. In this prototype the visuals are synthesized placeholders so we can stage transformation events deterministically — the feed layer is swappable. Motion-detection logic is faked on a seeded schedule; in production it reads the cam's alert stream (or runs a local frame-differ).
+    </div>
+  </div>
+
+  <aside class="archive">
+    <h2>Anomaly Archive</h2>
+    <div class="ah">MODE · <span id="archModeName">THUMBNAIL STRIP</span></div>
+    <div id="archiveBody">
+      <div class="empty">Waiting for the first event…</div>
+    </div>
+    <div class="legend">
+      <b>ARCHIVE MODES</b><br/>
+      <span style="color:var(--ir)">Counter</span> — just the number, growing<br/>
+      <span style="color:var(--ir)">Thumbnail strip</span> — scrubbable, click to replay<br/>
+      <span style="color:var(--ir)">Anomaly feed</span> — full metadata, transcript snippet, shareable<br/><br/>
+      <b>STATION MODES</b><br/>
+      <span style="color:var(--forest)">Sprouting</span> — body grows wings/antlers<br/>
+      <span style="color:var(--forest)">Doubling</span> — briefly two silhouettes<br/>
+      <span style="color:var(--forest)">Classifier delirium</span> — boxes lie; body stays<br/>
+      <span style="color:var(--forest)">Mixed</span> — each station does its own
+    </div>
+  </aside>
+</div>
+
+<div class="tweaks">
+  <h3>⚙ STATION FOUR · TWEAKS</h3>
+
+  <label>STATION MODE</label>
+  <div class="row" id="stationModeRow">
+    <div class="opt" data-mode="mixed">MIXED</div>
+    <div class="opt" data-mode="sprout">SPROUT</div>
+    <div class="opt" data-mode="double">DOUBLE</div>
+    <div class="opt" data-mode="delir">DELIR.</div>
+  </div>
+
+  <label>ARCHIVE MODE</label>
+  <div class="row" id="archiveModeRow">
+    <div class="opt" data-mode="counter">COUNTER</div>
+    <div class="opt" data-mode="strip">STRIP</div>
+    <div class="opt" data-mode="feed">FEED</div>
+  </div>
+
+  <label>EVENT FREQUENCY</label>
+  <div class="row" id="freqRow">
+    <div class="opt" data-freq="rare">RARE</div>
+    <div class="opt" data-freq="normal">NORMAL</div>
+    <div class="opt" data-freq="dense">DENSE</div>
+  </div>
+
+  <button class="trigger" onclick="triggerNow()">⚡ TRIGGER EVENT NOW</button>
+</div>
+
+<script>
+// ──────────────────────────────────────────────────────────
+// State & config
+// ──────────────────────────────────────────────────────────
+const TWEAKS = /*EDITMODE-BEGIN*/{
+  "stationMode": "delir",
+  "archiveMode": "feed",
+  "freq": "dense"
+}/*EDITMODE-END*/;
+
+const STATIONS = [
+  { id: 'cam-01', name: 'MISSION WOLF',  sub: 'Zeab enclosure · Westcliffe CO', defaultMode: 'double', bgHue: 'forest', subject: 'wolf'  },
+  { id: 'cam-02', name: 'AURORA CAM',    sub: 'Manitoba · 58.7°N',              defaultMode: 'delir',  bgHue: 'aurora', subject: 'sky'   },
+  { id: 'cam-03', name: 'MUSKOX CAM',    sub: 'Seward Peninsula · AK',          defaultMode: 'sprout', bgHue: 'tundra', subject: 'muskox'},
+  { id: 'cam-04', name: 'CATTLE POND · PASTURE', sub: 'Farm Sanctuary · Watkins Glen NY', defaultMode: 'sprout', bgHue: 'pasture', subject: 'cow'  },
+];
+
+const ANOMALIES = []; // archive
+
+// Resolve station mode given global mode
+function resolveMode(station) {
+  const m = TWEAKS.stationMode;
+  if (m === 'mixed') return station.defaultMode;
+  if (m === 'sprout') return 'sprout';
+  if (m === 'double') return 'double';
+  if (m === 'delir') return 'delir';
+  return station.defaultMode;
+}
+
+// ──────────────────────────────────────────────────────────
+// Feed background renderer (canvas) — ambient motion
+// ──────────────────────────────────────────────────────────
+function initFeed(canvas, station) {
+  const ctx = canvas.getContext('2d');
+  const DPR = Math.min(2, window.devicePixelRatio || 1);
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    canvas.width = r.width * DPR; canvas.height = r.height * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  resize();
+  new ResizeObserver(resize).observe(canvas);
+
+  // Pre-generate some noise
+  const particles = Array.from({length: 40}, () => ({
+    x: Math.random(), y: Math.random(),
+    vx: (Math.random() - .5) * .0004,
+    vy: (Math.random() - .5) * .0004,
+    r: 1 + Math.random() * 3,
+  }));
+
+  function render(t) {
+    const W = canvas.width / DPR, H = canvas.height / DPR;
+    // Base palette per subject
+    if (station.bgHue === 'aurora') {
+      // dark sky with aurora bands
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#0a0e1a'); g.addColorStop(1, '#1a1220');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      // horizon silhouette
+      ctx.fillStyle = '#050505';
+      ctx.beginPath(); ctx.moveTo(0, H*.85);
+      for (let x = 0; x <= W; x += 6) {
+        const y = H*.85 + Math.sin((x + t*.02) * .02) * 4 + ((x*7919) % 13) - 6;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+      // aurora bands
+      for (let i = 0; i < 3; i++) {
+        ctx.save();
+        const alpha = 0.12 + Math.sin(t*.0006 + i) * .06;
+        const grad = ctx.createLinearGradient(0, H*.2, 0, H*.75);
+        grad.addColorStop(0, `rgba(60, 255, 170, 0)`);
+        grad.addColorStop(.5, `rgba(60, 255, 170, ${alpha})`);
+        grad.addColorStop(1, `rgba(180, 100, 255, 0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        const off = t*.04 + i * 120;
+        ctx.moveTo(0, H*.2);
+        for (let x = 0; x <= W; x += 8) {
+          const yTop = H*.2 + Math.sin((x + off) * .01 + i) * 30 + Math.sin((x + off)*.025) * 10;
+          ctx.lineTo(x, yTop);
+        }
+        for (let x = W; x >= 0; x -= 8) {
+          const yBot = H*.75 + Math.sin((x + off*.7) * .008 + i) * 20;
+          ctx.lineTo(x, yBot);
+        }
+        ctx.closePath(); ctx.fill(); ctx.restore();
+      }
+      // stars
+      ctx.fillStyle = '#d0d8e8';
+      for (let i = 0; i < 40; i++) {
+        const x = (i * 97 + Math.sin(t*.0003 + i) * 2) % W;
+        const y = (i * 41) % (H*.7);
+        ctx.globalAlpha = .4 + Math.sin(t*.002 + i*.3) * .3;
+        ctx.fillRect(x, y, 1, 1);
+      }
+      ctx.globalAlpha = 1;
+    } else if (station.bgHue === 'tundra') {
+      // Pale grey-blue, flat light
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#b8bdb8'); g.addColorStop(.7, '#8a8e80'); g.addColorStop(1, '#4a4e44');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      // snow texture
+      ctx.fillStyle = 'rgba(255,255,255,.3)';
+      for (let i = 0; i < 60; i++) {
+        const x = (i * 73 + t*.02) % W;
+        const y = H*.65 + ((i*41) % 80);
+        ctx.fillRect(x, y, 2, 1);
+      }
+      // distant hills
+      ctx.fillStyle = '#3a3e38';
+      ctx.beginPath(); ctx.moveTo(0, H*.55);
+      for (let x = 0; x <= W; x += 8) {
+        const y = H*.55 + Math.sin(x*.01) * 8;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+    } else if (station.bgHue === 'pasture') {
+      // Green field, blue sky, pond
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#a8c4d8'); g.addColorStop(.45, '#c8d8c8'); g.addColorStop(.55, '#6a8a5a'); g.addColorStop(1, '#3a5a3a');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      // Distant trees (horizon line)
+      ctx.fillStyle = '#4a6a4a';
+      ctx.beginPath(); ctx.moveTo(0, H*.52);
+      for (let x = 0; x <= W; x += 4) {
+        const y = H*.52 - Math.abs(Math.sin(x*.05)) * 6 - ((x*13) % 7);
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(W, H*.55); ctx.lineTo(0, H*.55); ctx.closePath(); ctx.fill();
+      // Pond glimmer
+      ctx.fillStyle = 'rgba(120,160,180,.5)';
+      ctx.beginPath(); ctx.ellipse(W*.25, H*.75, W*.18, H*.05, 0, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.3)';
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.ellipse(W*.25, H*.75, W*(.08 + i*.04), H*.015, 0, 0, Math.PI);
+        ctx.stroke();
+      }
+      // Grass tufts
+      ctx.strokeStyle = '#4a6a3a';
+      for (let i = 0; i < 80; i++) {
+        const x = (i * 37) % W;
+        const y = H*.55 + ((i*23) % (H*.45));
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + ((i%3)-1), y - 3); ctx.stroke();
+      }
+    } else {
+      // forest
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#2a3a2a'); g.addColorStop(1, '#0e1410');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      // Tree trunks
+      ctx.fillStyle = '#050805';
+      const seed = station.id.charCodeAt(4) || 1;
+      for (let i = 0; i < 14; i++) {
+        const x = ((i*97*seed) % W);
+        const w = 4 + ((i*31) % 16);
+        const h = H * (.6 + ((i*17) % 10)/25);
+        ctx.globalAlpha = .5 + (i%5)/10;
+        ctx.fillRect(x, H - h, w, h);
+      }
+      ctx.globalAlpha = 1;
+      // ambient particles (fog, insects)
+      ctx.fillStyle = 'rgba(200,200,180,.3)';
+      for (const p of particles) {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > 1) p.vx *= -1;
+        if (p.y < 0 || p.y > 1) p.vy *= -1;
+        ctx.beginPath();
+        ctx.arc(p.x * W, p.y * H, p.r, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+  }
+
+  return { render };
+}
+
+// ──────────────────────────────────────────────────────────
+// Subject silhouette (SVG) — the thing that transforms
+// ──────────────────────────────────────────────────────────
+function subjectSVG(subject, wing, double, offset) {
+  // Return raw SVG group. wing 0..1, double 0..1 (opacity of doppelganger)
+  const col = '#0a0a08';
+  if (subject === 'wolf') {
+    return `
+      <g transform="translate(${-offset*30},0)" opacity="${1 - double*.3}">
+        <ellipse cx="140" cy="130" rx="44" ry="18" fill="${col}" opacity=".9"/>
+        <path d="M180 125 Q192 112 196 100 L204 100 L200 122 Q195 130 186 130 Z" fill="${col}" opacity=".9"/>
+        <ellipse cx="206" cy="100" rx="8" ry="6" fill="${col}"/>
+        <path d="M202 92 L199 82 L205 84 Z M210 92 L213 82 L208 86 Z" fill="${col}"/>
+        <path d="M98 130 Q82 132 76 140 L84 138 Q92 135 100 135" fill="${col}" opacity=".85"/>
+        <line x1="110" y1="148" x2="108" y2="164" stroke="${col}" stroke-width="2.5"/>
+        <line x1="128" y1="150" x2="126" y2="166" stroke="${col}" stroke-width="2.5"/>
+        <line x1="150" y1="150" x2="152" y2="166" stroke="${col}" stroke-width="2.5"/>
+        <line x1="168" y1="148" x2="170" y2="164" stroke="${col}" stroke-width="2.5"/>
+        ${wing > 0 ? `<g opacity="${wing}"><path d="M130 120 Q100 90 70 96 Q88 114 110 124 Z" fill="#2a4a3a" opacity=".85"/><path d="M170 120 Q200 90 230 96 Q212 114 190 124 Z" fill="#2a4a3a" opacity=".85"/></g>` : ''}
+      </g>
+      ${double > 0 ? `<g transform="translate(${30 + offset*30},0) scale(0.95)" opacity="${double*.7}" style="filter:blur(0.6px)">
+        <ellipse cx="140" cy="130" rx="44" ry="18" fill="#ff3d7f" opacity=".5"/>
+        <ellipse cx="206" cy="100" rx="8" ry="6" fill="#ff3d7f" opacity=".5"/>
+        <path d="M180 125 Q192 112 196 100 L204 100 L200 122 Q195 130 186 130 Z" fill="#ff3d7f" opacity=".5"/>
+      </g>` : ''}
+    `;
+  }
+  if (subject === 'muskox') {
+    return `
+      <g transform="translate(${-offset*20},0)" opacity="${1 - double*.3}">
+        <path d="M70 140 Q66 110 100 100 L180 100 Q220 104 224 140 Q222 156 200 160 L94 160 Q72 158 70 140 Z" fill="${col}"/>
+        <!-- long hair -->
+        ${Array.from({length:18},(_,i)=>`<line x1="${76+i*9}" y1="${150+Math.sin(i)*3}" x2="${72+i*9}" y2="${172+((i*3)%6)}" stroke="${col}" stroke-width="2"/>`).join('')}
+        <!-- horns -->
+        <path d="M186 104 Q178 96 170 100 Q176 108 186 110 Z" fill="${col}"/>
+        <path d="M206 104 Q214 96 222 100 Q216 108 206 110 Z" fill="${col}"/>
+        <line x1="116" y1="162" x2="114" y2="178" stroke="${col}" stroke-width="3"/>
+        <line x1="138" y1="162" x2="136" y2="178" stroke="${col}" stroke-width="3"/>
+        <line x1="168" y1="162" x2="170" y2="178" stroke="${col}" stroke-width="3"/>
+        <line x1="190" y1="162" x2="192" y2="178" stroke="${col}" stroke-width="3"/>
+        ${wing > 0 ? `<g opacity="${wing}"><!-- extra horns growing -->
+          <path d="M170 98 Q165 85 158 ${82 - wing*20}" stroke="${col}" stroke-width="${2+wing*2}" fill="none"/>
+          <path d="M222 98 Q227 85 234 ${82 - wing*20}" stroke="${col}" stroke-width="${2+wing*2}" fill="none"/>
+          <path d="M186 100 Q186 ${90 - wing*30} 186 ${82 - wing*40}" stroke="${col}" stroke-width="${1+wing*2}" fill="none"/>
+          <path d="M206 100 Q206 ${90 - wing*30} 206 ${82 - wing*40}" stroke="${col}" stroke-width="${1+wing*2}" fill="none"/>
+          <circle cx="195" cy="${90 - wing*25}" r="${wing*3}" fill="#9aa68a"/>
+        </g>` : ''}
+      </g>
+      ${double > 0 ? `<g transform="translate(${20 + offset*20},0) scale(0.98)" opacity="${double*.6}" style="filter:blur(0.5px)">
+        <path d="M70 140 Q66 110 100 100 L180 100 Q220 104 224 140 Q222 156 200 160 L94 160 Q72 158 70 140 Z" fill="#ff3d7f" opacity=".5"/>
+      </g>` : ''}
+    `;
+  }
+  if (subject === 'sky') {
+    // Aurora has no subject — but transformation creates a FIGURE in the sky
+    return wing > 0 || double > 0 ? `
+      <g opacity="${Math.max(wing, double)}">
+        <path d="M100 60 Q140 40 180 60 Q220 80 200 130 Q180 170 140 160 Q100 150 80 110 Q70 80 100 60 Z"
+          fill="none" stroke="rgba(127,216,122,.8)" stroke-width="1.5"
+          style="filter:blur(1px)"/>
+        <circle cx="140" cy="100" r="3" fill="rgba(255,255,255,.9)"/>
+        <circle cx="120" cy="90" r="2" fill="rgba(255,255,255,.7)"/>
+        <circle cx="160" cy="90" r="2" fill="rgba(255,255,255,.7)"/>
+        <!-- wings -->
+        <path d="M100 100 Q60 80 40 100 Q60 110 90 110 Z" fill="rgba(127,216,122,.4)"/>
+        <path d="M180 100 Q220 80 240 100 Q220 110 190 110 Z" fill="rgba(127,216,122,.4)"/>
+      </g>
+    ` : '';
+  }
+  // cow (cattle pond pasture)
+  return `
+    <g transform="translate(${-offset*18},0)" opacity="${1 - double*.3}">
+      <!-- body -->
+      <path d="M70 128 Q66 102 96 96 L190 96 Q224 100 228 128 Q226 150 204 154 L94 154 Q72 152 70 128 Z" fill="#f2ead8"/>
+      <!-- black patches -->
+      <path d="M90 100 Q110 98 120 110 Q118 130 100 132 Q84 128 84 114 Z" fill="${col}"/>
+      <path d="M150 106 Q180 104 200 116 Q202 140 180 144 Q154 140 150 122 Z" fill="${col}"/>
+      <!-- head -->
+      <path d="M220 110 Q238 106 244 118 Q244 134 230 138 Q220 138 216 128 Z" fill="#f2ead8"/>
+      <ellipse cx="236" cy="124" rx="5" ry="3" fill="${col}"/>
+      <circle cx="226" cy="118" r="1.5" fill="${col}"/>
+      <!-- horns -->
+      <path d="M222 106 Q218 98 214 96" stroke="${col}" stroke-width="2" fill="none"/>
+      <path d="M238 106 Q242 98 246 96" stroke="${col}" stroke-width="2" fill="none"/>
+      <!-- legs -->
+      <rect x="100" y="154" width="6" height="18" fill="${col}"/>
+      <rect x="128" y="154" width="6" height="18" fill="${col}"/>
+      <rect x="170" y="154" width="6" height="18" fill="${col}"/>
+      <rect x="198" y="154" width="6" height="18" fill="${col}"/>
+      <!-- tail -->
+      <path d="M70 120 Q58 126 56 138" stroke="${col}" stroke-width="2.5" fill="none"/>
+      ${wing > 0 ? `<g opacity="${wing}">
+        <!-- sprouting wings -->
+        <path d="M130 100 Q90 ${80 - wing*30} 54 ${88 - wing*20} Q84 108 118 110 Z" fill="#8a7a6a" opacity=".85"/>
+        <path d="M170 100 Q210 ${80 - wing*30} 246 ${88 - wing*20} Q216 108 182 110 Z" fill="#8a7a6a" opacity=".85"/>
+        ${Array.from({length:5},(_,i)=>`<line x1="${126-i*8}" y1="${102-i*4}" x2="${92-i*12}" y2="${90-i*3}" stroke="#4a3a2a" stroke-width=".8"/>`).join('')}
+        ${Array.from({length:5},(_,i)=>`<line x1="${174+i*8}" y1="${102-i*4}" x2="${208+i*12}" y2="${90-i*3}" stroke="#4a3a2a" stroke-width=".8"/>`).join('')}
+        <!-- halo -->
+        <ellipse cx="230" cy="${96 - wing*14}" rx="${14+wing*4}" ry="${3+wing}" fill="none" stroke="#e8d880" stroke-width="${.8+wing}" opacity="${wing*.9}"/>
+      </g>` : ''}
+    </g>
+    ${double > 0 ? `<g transform="translate(${18 + offset*18},0) scale(0.98)" opacity="${double*.65}" style="filter:blur(0.5px)">
+      <path d="M70 128 Q66 102 96 96 L190 96 Q224 100 228 128 Q226 150 204 154 L94 154 Q72 152 70 128 Z" fill="#ff3d7f" opacity=".4"/>
+      <ellipse cx="236" cy="124" rx="5" ry="3" fill="#ff3d7f" opacity=".6"/>
+    </g>` : ''}
+  `;
+}
+
+// ──────────────────────────────────────────────────────────
+// Station render
+// ──────────────────────────────────────────────────────────
+function createStation(station) {
+  const root = document.createElement('div');
+  root.className = 'station';
+  root.innerHTML = `
+    <div class="feed">
+      <canvas class="bg"></canvas>
+      <svg class="overlay" viewBox="0 0 280 180" preserveAspectRatio="xMidYMid meet">
+        <g class="subject xform" id="subj-${station.id}"></g>
+        <g class="tracker" id="trk-${station.id}"></g>
+      </svg>
+      <div class="scanlines"></div>
+      <div class="vignette"></div>
+      <div class="hud">
+        <span class="tl">${station.id.toUpperCase()} · ${station.name}</span>
+        <span class="tr" id="hud-status-${station.id}"><span class="rec">REC</span></span>
+        <span class="bl" id="hud-ts-${station.id}">—</span>
+        <span class="br">${station.sub}</span>
+      </div>
+    </div>
+    <div class="ch live" id="ch-${station.id}">
+      <span><span class="dot"></span>LIVE · <span id="ch-mode-${station.id}">—</span></span>
+      <span id="ch-conf-${station.id}">CONF 0.93</span>
+    </div>
+    <div class="transcript" id="tr-${station.id}"></div>
+  `;
+  return root;
+}
+
+// ──────────────────────────────────────────────────────────
+// Transcript lines (ambient vs glitch)
+// ──────────────────────────────────────────────────────────
+const AMBIENT = {
+  wolf:  [['WIND'], ['DISTANT VEHICLE'], ['WIND', 'PANTING'], ['[soft howl · 2s]'], ['WIND'], ['WIND', 'FOOTFALLS']],
+  muskox:[['WIND'], ['WIND', 'SNORT'], ['HOOF ON FROST'], ['WIND'], ['[herd vocalization]'], ['WIND']],
+  sky:   [['[SILENCE]'], ['DISTANT WIND'], ['[SILENCE]'], ['[CRACKLE · ionospheric?]'], ['[SILENCE]'], ['[SILENCE]']],
+  cow:   [['WIND', 'CHEWING'], ['[low moo · 2s]'], ['WATER LAP'], ['WIND'], ['FLIES'], ['[distant moo]']],
+};
+const GLITCH_LINES = {
+  sprout: [
+    ['[WING?]', '[WINGBEAT · 4 cycles]'],
+    ['[UNIDENTIFIED · 340Hz]', '[LAUGHTER?]'],
+    ['[feather, large]', '[audible sprouting]'],
+  ],
+  double: [
+    ['[TWO BODIES]', '[breathing · desync]'],
+    ['[GASP]', '[second figure approaching]'],
+    ['[two sets of hoofbeats]', '[one arriving, one leaving]'],
+  ],
+  delir: [
+    ['CLASSIFIER FAULT', '[conflicting bodies]'],
+    ['[signal anomaly · 14.3kHz]', '[labeler: "god?"]'],
+    ['[confidence collapse]', '[re-identifying]'],
+  ],
+};
+function fmtTs(d = new Date()) {
+  const pad = n => String(n).padStart(2,'0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// ──────────────────────────────────────────────────────────
+// Per-station runtime
+// ──────────────────────────────────────────────────────────
+class Station {
+  constructor(cfg) {
+    this.cfg = cfg;
+    this.el = createStation(cfg);
+    this.canvas = this.el.querySelector('canvas.bg');
+    this.subj = this.el.querySelector(`#subj-${cfg.id}`);
+    this.trk  = this.el.querySelector(`#trk-${cfg.id}`);
+    this.tr   = this.el.querySelector(`#tr-${cfg.id}`);
+    this.status = this.el.querySelector(`#hud-status-${cfg.id}`);
+    this.chMode = this.el.querySelector(`#ch-mode-${cfg.id}`);
+    this.chConf = this.el.querySelector(`#ch-conf-${cfg.id}`);
+    this.ch = this.el.querySelector(`#ch-${cfg.id}`);
+    this.tsEl = this.el.querySelector(`#hud-ts-${cfg.id}`);
+    this.bg = initFeed(this.canvas, cfg);
+    this.state = 'live';           // live | glitching
+    this.glitchStart = 0;
+    this.glitchDur = 0;
+    this.glitchMode = null;
+    this.transcript = [];
+    this.updateModeLabel();
+    this.scheduleNext();
+    // periodic transcript line
+    setInterval(() => this.pushAmbient(), 3200 + Math.random()*2500);
+  }
+  updateModeLabel() {
+    const m = resolveMode(this.cfg);
+    this.chMode.textContent = {sprout:'SPROUT MODE', double:'DOUBLE MODE', delir:'DELIRIUM MODE'}[m];
+  }
+  scheduleNext() {
+    const base = {rare: 22000, normal: 11000, dense: 5500}[TWEAKS.freq] || 11000;
+    const jitter = base * 0.6 * (Math.random() - .3);
+    this.nextEventAt = performance.now() + base + jitter + Math.random()*2000;
+  }
+  triggerGlitch(forceMode) {
+    if (this.state === 'glitching') return;
+    this.state = 'glitching';
+    this.glitchStart = performance.now();
+    this.glitchDur = 3800 + Math.random() * 2200;
+    this.glitchMode = forceMode || resolveMode(this.cfg);
+    this.status.innerHTML = `<span style="color:#ff3d7f;letter-spacing:2px">⚠ ANOMALY</span>`;
+    this.ch.classList.remove('live'); this.ch.classList.add('anom');
+    // push glitch transcript
+    const lines = GLITCH_LINES[this.glitchMode];
+    const pick = lines[Math.floor(Math.random()*lines.length)];
+    pick.forEach((line, i) => setTimeout(() => this.pushLine(line, true), i*900));
+  }
+  endGlitch() {
+    this.state = 'live';
+    this.status.innerHTML = `<span class="rec">REC</span>`;
+    this.ch.classList.remove('anom'); this.ch.classList.add('live');
+    // Archive the event
+    const ev = {
+      id: `${this.cfg.id}-${Date.now()}`,
+      cam: this.cfg.id, camName: this.cfg.name,
+      subject: this.cfg.subject,
+      mode: this.glitchMode,
+      ts: fmtTs(),
+      date: new Date().toISOString().slice(0,10),
+      snippet: GLITCH_LINES[this.glitchMode][0],
+      // capture a snapshot spec: the wing/double values at climax
+      capture: { wing: this.glitchMode === 'sprout' ? 0.9 : (this.glitchMode === 'delir' ? 0 : 0.2),
+                 double: this.glitchMode === 'double' ? 0.8 : (this.glitchMode === 'delir' ? 0 : 0) },
+    };
+    ANOMALIES.unshift(ev);
+    renderArchive();
+    this.scheduleNext();
+  }
+  pushLine(text, glitch=false) {
+    const ts = fmtTs();
+    this.transcript.unshift({ ts, text, glitch });
+    if (this.transcript.length > 4) this.transcript.pop();
+    this.renderTranscript();
+  }
+  pushAmbient() {
+    if (this.state === 'glitching') return;
+    const pool = AMBIENT[this.cfg.subject];
+    const pick = pool[Math.floor(Math.random()*pool.length)];
+    this.pushLine(pick.join(' · '), false);
+  }
+  renderTranscript() {
+    this.tr.innerHTML = this.transcript.map(l =>
+      `<div><span class="ts">[${l.ts}]</span> <span class="${l.glitch?'glitch':'q'}">${l.text}</span></div>`
+    ).join('');
+  }
+  // frame
+  tick(now) {
+    this.bg.render(now);
+    // ambient clock
+    this.tsEl.textContent = fmtTs();
+    // subject + tracker render
+    const mode = this.glitchMode || resolveMode(this.cfg);
+    let wing = 0, double = 0, offset = 0, conf = 0.93;
+    if (this.state === 'glitching') {
+      const p = (now - this.glitchStart) / this.glitchDur;
+      if (p >= 1) { this.endGlitch(); }
+      else {
+        // easeInOutCubic-ish; peak at p=0.5
+        const arc = p < .5 ? (p*2) : (2 - p*2);
+        const eased = arc * arc * (3 - 2*arc);
+        if (mode === 'sprout') { wing = eased; conf = 0.93 - eased*.6; }
+        if (mode === 'double') { double = eased; offset = eased; conf = 0.93 - eased*.5; }
+        if (mode === 'delir')  { wing = 0; double = 0; conf = 0.93 - eased*.8 + Math.sin(p*50)*.1; }
+      }
+    } else {
+      if (performance.now() > this.nextEventAt) this.triggerGlitch();
+    }
+    this.chConf.textContent = `CONF ${conf.toFixed(2)}`;
+    this.subj.innerHTML = subjectSVG(this.cfg.subject, wing, double, offset);
+    // tracker
+    this.renderTracker(mode, now);
+  }
+  renderTracker(mode, now) {
+    const t = this.state === 'glitching' ? (now - this.glitchStart)/this.glitchDur : 0;
+    if (this.cfg.subject === 'sky') {
+      // Aurora's tracker is always lying
+      const active = this.state === 'glitching';
+      this.trk.innerHTML = active ? `
+        <rect x="80" y="50" width="130" height="110" class="glitched"/>
+        <rect x="80" y="40" width="80" height="10" fill="#ff3d7f"/>
+        <text x="84" y="48" class="lbl" fill="#000" font-weight="700">FIGURE? · 0.${Math.floor(20 + t*40)}</text>
+      ` : `
+        <rect x="0" y="0" width="280" height="180"/>
+        <text x="8" y="14" class="lbl">REGION · 0.94</text>
+      `;
+      return;
+    }
+    if (mode === 'delir' && this.state === 'glitching') {
+      // Multiple contradicting boxes
+      const labels = ['WOLF', 'BEAR', 'DOG?', 'ANGEL?', 'NO MATCH', 'GOD?'];
+      let html = '';
+      const n = Math.min(6, 2 + Math.floor(t * 10));
+      for (let i = 0; i < n; i++) {
+        const cx = 140 + Math.sin(i*1.7 + now*.003) * 30;
+        const cy = 120 + Math.cos(i*2.1 + now*.002) * 20;
+        const w = 80 + ((i*23) % 40);
+        const h = 60 + ((i*19) % 30);
+        const lbl = labels[i % labels.length];
+        const conf = (0.5 - Math.abs((i/n) - 0.5)).toFixed(2);
+        html += `
+          <rect x="${cx-w/2}" y="${cy-h/2}" width="${w}" height="${h}" class="${i===0?'glitched':''} ${i>2?'rejected':''}"/>
+          <rect x="${cx-w/2}" y="${cy-h/2 - 10}" width="${lbl.length*6+20}" height="9" fill="${i===0?'#ff3d7f':'#7fd87a'}" opacity="${i>2?.5:1}"/>
+          <text x="${cx-w/2+3}" y="${cy-h/2 - 3}" class="lbl" fill="#000" font-weight="700">${lbl} · ${conf}</text>
+        `;
+      }
+      this.trk.innerHTML = html;
+    } else {
+      // One confident box, maybe a second if doubling
+      const labels = {wolf:'CANIS', muskox:'OVIBOS', cow:'BOS'};
+      const primary = labels[this.cfg.subject] || 'SUBJ';
+      const active = this.state === 'glitching';
+      let html = `
+        <rect x="60" y="60" width="160" height="110" class="${active&&mode!=='delir'?'glitched':''}"/>
+        <rect x="60" y="50" width="${primary.length*6+24}" height="9" fill="${active?'#ff3d7f':'#7fd87a'}"/>
+        <text x="63" y="57" class="lbl" fill="#000" font-weight="700">${primary} · 0.${Math.floor(90 - t*50)}</text>
+      `;
+      if (mode === 'double' && active) {
+        const off = Math.sin(t*Math.PI) * 40;
+        html += `
+          <rect x="${100+off}" y="80" width="120" height="80" class="glitched"/>
+          <rect x="${100+off}" y="70" width="100" height="9" fill="#ff3d7f"/>
+          <text x="${103+off}" y="77" class="lbl" fill="#000" font-weight="700">${primary}² · 0.${Math.floor(30 + t*40)}?</text>
+        `;
+      }
+      if (mode === 'sprout' && active) {
+        html += `
+          <rect x="70" y="40" width="140" height="40" class="glitched rejected"/>
+          <text x="72" y="38" class="lbl" fill="#ff3d7f">OUTGROWTH · 0.${Math.floor(10 + t*40)}</text>
+        `;
+      }
+      this.trk.innerHTML = html;
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+// Archive
+// ──────────────────────────────────────────────────────────
+function renderArchive() {
+  const body = document.getElementById('archiveBody');
+  const modeName = document.getElementById('archModeName');
+  const total = ANOMALIES.length;
+  document.getElementById('anomCountHeader').textContent = String(total).padStart(3, '0');
+
+  const m = TWEAKS.archiveMode;
+  modeName.textContent = {counter:'COUNTER', strip:'THUMBNAIL STRIP', feed:'ANOMALY FEED'}[m];
+
+  if (total === 0) {
+    body.innerHTML = `<div class="empty">Waiting for the first event…</div>`;
+    return;
+  }
+
+  if (m === 'counter') {
+    const byMode = ANOMALIES.reduce((a,e)=>((a[e.mode]=(a[e.mode]||0)+1),a),{});
+    const byCam  = ANOMALIES.reduce((a,e)=>((a[e.camName]=(a[e.camName]||0)+1),a),{});
+    body.innerHTML = `
+      <div class="counter">${String(total).padStart(3,'0')}<small>ANOMALIES LOGGED · TODAY</small></div>
+      <div style="margin-top:22px;font-size:10px;line-height:1.7;color:var(--ink)">
+        <b style="color:var(--dim);letter-spacing:1.5px;font-size:9px">BY MODE</b>
+        ${Object.entries(byMode).map(([k,v])=>`<div style="display:flex;justify-content:space-between;border-bottom:1px dotted var(--rule);padding:3px 0"><span>${k.toUpperCase()}</span><span style="color:var(--ir)">${String(v).padStart(2,'0')}</span></div>`).join('')}
+        <div style="height:10px"></div>
+        <b style="color:var(--dim);letter-spacing:1.5px;font-size:9px">BY STATION</b>
+        ${Object.entries(byCam).map(([k,v])=>`<div style="display:flex;justify-content:space-between;border-bottom:1px dotted var(--rule);padding:3px 0"><span>${k}</span><span style="color:var(--ir)">${String(v).padStart(2,'0')}</span></div>`).join('')}
+      </div>
+      <div style="margin-top:20px;font-size:10px;color:var(--dim);font-style:italic;line-height:1.6">
+        The counter mode keeps no evidence. Each anomaly is witnessed, tallied, forgotten. The project's only promise is the count itself.
+      </div>
+    `;
+    return;
+  }
+
+  if (m === 'strip') {
+    const latest = ANOMALIES.slice(0, 24);
+    body.innerHTML = `
+      <div class="thumb-strip">
+        ${latest.map(e => `
+          <div class="thumb" data-id="${e.id}" title="${e.camName} · ${e.ts}">
+            <div class="tl-ts">${e.ts}</div>
+            <svg viewBox="0 0 280 180" style="width:100%;height:100%;background:#0e1410">
+              <g style="transform:translate(0,0)">
+                ${subjectSVG(e.subject, e.capture.wing, e.capture.double, 0)}
+              </g>
+            </svg>
+            <div class="tl-cam">${e.cam.slice(-2)}</div>
+          </div>
+        `).join('')}
+      </div>
+      <div style="font-size:10px;color:var(--dim);line-height:1.6">
+        <b style="color:var(--ink);letter-spacing:1.5px;font-size:9px">${latest.length} CAPTURES</b><br/>
+        Click any thumbnail to re-trigger that event on its source station. The strip holds the last 24.
+      </div>
+      <div style="margin-top:16px;font-size:10px;color:var(--dim);font-style:italic;line-height:1.6">
+        The strip commits to the captures but not to their meaning. Scrubbable, shareable, quotidian — a TikTok feed of prophecies.
+      </div>
+    `;
+    body.querySelectorAll('.thumb').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.dataset.id;
+        const ev = ANOMALIES.find(a => a.id === id);
+        if (!ev) return;
+        const st = STATION_INSTANCES.find(s => s.cfg.id === ev.cam);
+        if (st) st.triggerGlitch(ev.mode);
+      });
+    });
+    return;
+  }
+
+  if (m === 'feed') {
+    body.innerHTML = ANOMALIES.slice(0, 20).map(e => `
+      <div class="anom" data-id="${e.id}">
+        <div class="ah-row">
+          <span class="cam">${e.camName}</span>
+          <span>${e.date} · ${e.ts}</span>
+        </div>
+        <div class="title">${
+          e.mode === 'sprout' ? 'The body grew something' :
+          e.mode === 'double' ? 'Two bodies where one was' :
+          'The apparatus argued with itself'
+        }.</div>
+        <div class="body">
+          ${e.mode === 'sprout' ? `A ${e.subject} at ${e.ts} held an outgrowth for ${(Math.random()*2+3).toFixed(1)}s. Canopy/enclosure undisturbed. Classifier confidence collapsed from 0.93 to 0.31.` : ''}
+          ${e.mode === 'double' ? `A second silhouette resolved alongside the primary subject for ${(Math.random()*2+2).toFixed(1)}s. Tracker assigned two IDs. The feed does not record which was the original.` : ''}
+          ${e.mode === 'delir' ? `Classifier produced ${Math.floor(3 + Math.random()*4)} contradicting bodies during a window of ${(Math.random()*3+2).toFixed(1)}s. Subject geometry unchanged. Labels included: "wolf", "angel?", "god?".` : ''}
+        </div>
+        <div class="glitch-snip">
+          <span class="dim">[${e.ts}]</span> ${Array.isArray(e.snippet) ? e.snippet.join(' · ') : e.snippet}
+        </div>
+      </div>
+    `).join('');
+    body.querySelectorAll('.anom').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.dataset.id;
+        const ev = ANOMALIES.find(a => a.id === id);
+        if (!ev) return;
+        const st = STATION_INSTANCES.find(s => s.cfg.id === ev.cam);
+        if (st) st.triggerGlitch(ev.mode);
+      });
+    });
+    return;
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+// Boot
+// ──────────────────────────────────────────────────────────
+const STATION_INSTANCES = STATIONS.map(cfg => {
+  const s = new Station(cfg);
+  document.getElementById('grid').appendChild(s.el);
+  return s;
+});
+
+function frame(now) {
+  STATION_INSTANCES.forEach(s => s.tick(now));
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+setInterval(() => {
+  document.getElementById('clock').textContent = fmtTs();
+}, 1000);
+
+// Tweak wiring
+function bindRow(rowId, key, onChange) {
+  const row = document.getElementById(rowId);
+  row.querySelectorAll('.opt').forEach(opt => {
+    const v = opt.dataset.mode || opt.dataset.freq;
+    if (v === TWEAKS[key]) opt.classList.add('active');
+    opt.addEventListener('click', () => {
+      row.querySelectorAll('.opt').forEach(o => o.classList.remove('active'));
+      opt.classList.add('active');
+      TWEAKS[key] = v;
+      window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [key]: v } }, '*');
+      onChange && onChange();
+    });
+  });
+}
+bindRow('stationModeRow', 'stationMode', () => STATION_INSTANCES.forEach(s => s.updateModeLabel()));
+bindRow('archiveModeRow', 'archiveMode', () => renderArchive());
+bindRow('freqRow', 'freq');
+
+window.triggerNow = () => {
+  const active = STATION_INSTANCES.filter(s => s.state === 'live');
+  if (active.length) active[Math.floor(Math.random()*active.length)].triggerGlitch();
+};
+
+// Edit mode availability
+window.addEventListener('message', (e) => {});
+window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+
+// Kick off with a staged first event ~3s in so the archive isn't empty for long
+setTimeout(() => STATION_INSTANCES[2].triggerGlitch(), 3000);
+setTimeout(() => STATION_INSTANCES[0].triggerGlitch(), 9000);
+
+renderArchive();
+</script>
+</body>
+</html>

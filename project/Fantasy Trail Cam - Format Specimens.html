@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fantasy Trail Cam · Format Specimens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Caveat:wght@400;600&family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --mono-2: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    --mono-3: 'Space Mono', monospace;
+    --serif: 'EB Garamond', Georgia, serif;
+  }
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #e8e2d0; }
+  * { box-sizing: border-box; }
+  /* Tweaks panel */
+  .tweaks {
+    position: fixed; bottom: 20px; right: 20px; z-index: 100;
+    background: #f1ecdd; color: #232821;
+    border: 1px solid #232821;
+    box-shadow: 3px 3px 0 #232821;
+    font-family: var(--mono); font-size: 11px;
+    padding: 10px 12px; width: 240px;
+    display: none;
+  }
+  .tweaks.open { display: block; }
+  .tweaks h3 {
+    margin: 0 0 8px; font-size: 11px; letter-spacing: 2px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid #232821; padding-bottom: 4px;
+  }
+  .tweaks label {
+    display: block; margin: 10px 0 4px;
+    font-size: 9.5px; letter-spacing: 1.5px; color: #6b6f68;
+  }
+  .tweaks input[type=range] { width: 100%; accent-color: #ff3d7f; }
+  .tweaks .pal-row { display: flex; gap: 4px; }
+  .tweaks .pal {
+    flex: 1; padding: 4px; border: 1px solid #b8b09e;
+    font-size: 9px; text-align: center; cursor: pointer;
+    letter-spacing: 1px;
+  }
+  .tweaks .pal.active { border-color: #232821; box-shadow: 2px 2px 0 #232821; }
+  .tweaks .toggle {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 0; cursor: pointer; user-select: none;
+    gap: 10px;
+  }
+  .tweaks .toggle > span:first-child { white-space: nowrap; }
+  .tweaks .toggle .dot {
+    width: 22px; height: 12px; background: #b8b09e;
+    border: 1px solid #232821; position: relative;
+  }
+  .tweaks .toggle .dot::after {
+    content: ''; position: absolute; top: 1px; left: 1px;
+    width: 8px; height: 8px; background: #f1ecdd;
+    transition: left 0.15s;
+  }
+  .tweaks .toggle.on .dot { background: #ff3d7f; }
+  .tweaks .toggle.on .dot::after { left: 11px; }
+
+  .intro-strip {
+    font-family: var(--mono);
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="primitives.jsx"></script>
+<script type="text/babel" src="cards-a.jsx"></script>
+<script type="text/babel" src="cards-b.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect, useMemo } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "corruption": 35,
+  "palette": "bone",
+  "irMode": false,
+  "fieldConditions": true
+}/*EDITMODE-END*/;
+
+function IntroPanel() {
+  const t = window.useTweaks();
+  const c = t.palette;
+  return (
+    <div className="intro-strip" style={{
+      width: 920, padding: '36px 40px 30px',
+      color: c.ink, display:'flex', gap: 40, alignItems:'flex-end',
+      background: 'transparent',
+    }}>
+      <div style={{ flex: 1, maxWidth: 560 }}>
+        <div style={{ fontSize: 10, letterSpacing: 3, color: c.ir, marginBottom: 14 }}>
+          FIELD NOTES · DRAFT 01 · FOR REVIEW
+        </div>
+        <div style={{ fontFamily: 'var(--serif)', fontSize: 52, lineHeight: 0.95, letterSpacing: -1.2, marginBottom: 18, textWrap:'balance' }}>
+          Twelve containers<br/>
+          for what the camera<br/>
+          <em style={{ color: c.forest }}>kept anyway</em>.
+        </div>
+        <div style={{ fontSize: 12, lineHeight: 1.6, maxWidth: 500, color: c.ink, marginBottom: 14 }}>
+          A trail cam in a Tennessee clearing captured three frames, six seconds apart.
+          The middle frame contained something the other two did not.
+          The canopy was undisturbed. No one has claimed the card.
+        </div>
+        <div style={{ fontSize: 11, lineHeight: 1.55, maxWidth: 500, color: c.dim, fontStyle:'italic' }}>
+          These are twelve formats the project could take.
+          Each holds three tensions — documentary ↔ mythology, clinical ↔ animate, apparatus ↔ subject — without resolving them.
+          Each lists an MVP you could ship in a week, and a full vision worth the risk.
+          Compare them. Kill nine. Keep three.
+        </div>
+      </div>
+      <div style={{ width: 280, fontFamily:'var(--mono)', fontSize: 10, color: c.dim, lineHeight: 1.6, borderLeft:`1px dashed ${c.rule}`, paddingLeft: 20 }}>
+        <div style={{ color: c.ink, letterSpacing: 2, fontSize: 9, marginBottom: 6 }}>HOW TO READ THIS CANVAS</div>
+        <div style={{ marginBottom: 8 }}>Each specimen is a 920×560 artifact. Left third: argument, tension, MVP/vision, risk. Right two-thirds: a rendering of the format.</div>
+        <div style={{ marginBottom: 8 }}>Pan with two-finger drag. Pinch to zoom. The arrangement is editorial: strongest-feeling on top, most speculative below.</div>
+        <div style={{ marginTop: 14, color: c.ir, letterSpacing: 2, fontSize: 9 }}>↘ TWEAKS LIVE BOTTOM-RIGHT</div>
+      </div>
+    </div>
+  );
+}
+
+function Tweaks({ state, setState }) {
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (e.data?.type === '__activate_edit_mode') setOpen(true);
+      if (e.data?.type === '__deactivate_edit_mode') setOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+  const set = (patch) => {
+    const next = { ...state, ...patch };
+    setState(next);
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: patch }, '*');
+  };
+  return (
+    <div className={`tweaks ${open ? 'open' : ''}`}>
+      <h3>
+        <span>⚙ TWEAKS</span>
+        <span style={{ cursor:'pointer', fontSize: 10 }} onClick={() => setOpen(false)}>×</span>
+      </h3>
+      <label>PALETTE</label>
+      <div className="pal-row">
+        {Object.entries(window.PALETTES).map(([k, p]) => (
+          <div key={k} className={`pal ${state.palette === k ? 'active' : ''}`}
+            onClick={() => set({ palette: k })}
+            style={{ background: p.ground, color: p.ink }}>
+            {p.name}
+          </div>
+        ))}
+      </div>
+      <label>CORRUPTION · {state.corruption}%</label>
+      <input type="range" min="0" max="100" step="5"
+        value={state.corruption}
+        onChange={e => set({ corruption: Number(e.target.value) })}/>
+      <div className={`toggle ${state.irMode ? 'on' : ''}`}
+        onClick={() => set({ irMode: !state.irMode })}>
+        <span>IR MODE</span><span className="dot"/>
+      </div>
+      <div className={`toggle ${state.fieldConditions ? 'on' : ''}`}
+        onClick={() => set({ fieldConditions: !state.fieldConditions })}>
+        <span>FIELD CONDITIONS</span><span className="dot"/>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [state, setState] = useState(TWEAK_DEFAULTS);
+  const ctx = useMemo(() => ({
+    corruption: state.corruption,
+    palette: window.PALETTES[state.palette] || window.PALETTES.bone,
+    paletteKey: state.palette,
+    irMode: state.irMode,
+    fieldConditions: state.fieldConditions,
+  }), [state]);
+
+  return (
+    <window.TweakCtx.Provider value={ctx}>
+      <window.SvgDefs/>
+      <window.DesignCanvas>
+        <div data-screen-label="00 Intro" style={{ padding: '0 60px' }}>
+          <IntroPanel/>
+        </div>
+
+        <window.DCSection
+          title="Row A · Documentary Registers"
+          subtitle="Formats that lean into the camera's apparatus — clinical, printed, archival. The tension here: what does the container admit it cannot hold?"
+          gap={56}
+        >
+          <div data-screen-label="01 Field Guide"><window.Card01_FieldGuide/></div>
+          <div data-screen-label="08 Firmware Manual"><window.Card08_Manual/></div>
+          <div data-screen-label="11 Vitrine"><window.Card11_Vitrine/></div>
+          <div data-screen-label="12 Book of Hours"><window.Card12_BookOfHours/></div>
+        </window.DCSection>
+
+        <window.DCSection
+          title="Row B · Haunted Apparatus"
+          subtitle="Formats where the machine is the subject. The interface itself is the ghost — colonized by organic, glitched by insistence."
+          gap={56}
+        >
+          <div data-screen-label="03 Motion Tracker"><window.Card03_MotionTracker/></div>
+          <div data-screen-label="06 Haunted Desktop"><window.Card06_HauntedDesktop/></div>
+          <div data-screen-label="02 Config Wizard"><window.Card02_ConfigWizard/></div>
+          <div data-screen-label="09 Audio Log"><window.Card09_Audio/></div>
+        </window.DCSection>
+
+        <window.DCSection
+          title="Row C · Testimony & Myth"
+          subtitle="Formats that sit with not-knowing. Polyphonic. No authority — only witnesses, keepers, rumor, and the occasional photocopier."
+          gap={56}
+        >
+          <div data-screen-label="07 Forum Thread"><window.Card07_Forum/></div>
+          <div data-screen-label="05 Researcher Wall"><window.Card05_Wall/></div>
+          <div data-screen-label="04 Four Monitors"><window.Card04_FourMonitors/></div>
+          <div data-screen-label="10 Zine"><window.Card10_Zine/></div>
+        </window.DCSection>
+
+        <div style={{ padding: '40px 60px 80px', maxWidth: 1100, fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 1.7, color: ctx.palette.ink }}>
+          <div style={{ fontSize: 10, letterSpacing: 3, color: ctx.palette.ir, marginBottom: 14 }}>
+            AFTER THE CANVAS · A SHORT READING
+          </div>
+          <div style={{ fontFamily:'var(--serif)', fontSize: 28, lineHeight: 1.2, marginBottom: 16, maxWidth: 780, letterSpacing: -0.5, textWrap:'balance' }}>
+            What survives the pressure-test — and why.
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns: '1fr 1fr', gap: 32, maxWidth: 1000 }}>
+            <div>
+              <div style={{ color: ctx.palette.forest, fontSize: 10, letterSpacing: 2, marginBottom: 4 }}>STRONGEST FORMAT ARGUMENTS</div>
+              <p style={{ margin:'4px 0 10px' }}><b>05 · Researcher's Wall</b> holds all three tensions in one frame. The keeper is absent but legible. Moodboard-as-argument, not moodboard-as-mood.</p>
+              <p style={{ margin:'4px 0 10px' }}><b>06 · Haunted Desktop</b> is the apparatus-is-subject argument. Moss grows on the OS. The deer isn't the thing; the machine that can't stop remembering the deer is the thing.</p>
+              <p style={{ margin:'4px 0 10px' }}><b>11 · Vitrine</b> is the most austere and earns the most. The SD card as specimen is a position — and the label carries the argument without raising its voice.</p>
+              <p style={{ margin:'4px 0' }}><b>03 · Motion Tracker</b> is the only format where the tension is enacted temporally. The rectangles fail in real time; the confidence score is the joke and the argument.</p>
+            </div>
+            <div>
+              <div style={{ color: ctx.palette.plum, fontSize: 10, letterSpacing: 2, marginBottom: 4 }}>WHAT I'D KILL FIRST</div>
+              <p style={{ margin:'4px 0 10px' }}><b>02 · Config Wizard</b> is the easiest to love and the easiest to become a toy. If kept, it must resist closing.</p>
+              <p style={{ margin:'4px 0 10px' }}><b>10 · Zine</b> leans on a well-worn visual grammar. Keep only if the content (the generational-decay argument) is the actual production method.</p>
+              <p style={{ margin:'4px 0 10px' }}><b>12 · Book of Hours</b> is the most beautiful and the most at risk of twee. If kept, the illuminations must feel afraid of what they're illuminating.</p>
+              <div style={{ marginTop: 18, color: ctx.palette.teal, fontSize: 10, letterSpacing: 2, marginBottom: 4 }}>IF I HAD TO PICK THREE</div>
+              <p style={{ margin:'4px 0' }}><b>05 + 06 + 11.</b> Wall, Desktop, Vitrine. One testimony, one apparatus, one relic. Three registers of the same argument, each doing work the others can't.</p>
+            </div>
+          </div>
+        </div>
+      </window.DesignCanvas>
+      <Tweaks state={state} setState={setState}/>
+    </window.TweakCtx.Provider>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+</script>
+</body>
+</html>
