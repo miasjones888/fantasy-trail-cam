@@ -334,13 +334,21 @@ export const Station = forwardRef<StationHandle, Props>(function Station({ stati
         mythRef.current.textContent = myth;
       }
 
+      // Per-glitch token — lets the async mythology response detect that it
+      // was issued for THIS glitch and not a later same-mode one. Using the
+      // startTime as a token works because every glitch sets a new value.
+      const glitchToken = glitchStartRef.current;
+
       // Push AI-generated glitch transcript lines (seed with whatever we have;
-      // /api/mythology may replace these below once it resolves).
+      // /api/mythology may replace these below once it resolves). We stash
+      // the seed timeouts so the mythology handler can cancel them if real
+      // lines arrive before the seeds have all fired.
       const seedLines = glitchAnalysisRef.current?.glitchLines?.length
         ? glitchAnalysisRef.current.glitchLines
         : ["[ANOMALY]", "[classifier fault]", "[UNIDENTIFIED]"];
+      const seedTimeouts: ReturnType<typeof setTimeout>[] = [];
       seedLines.slice(0, 3).forEach((line: string, i: number) => {
-        setTimeout(() => pushLine(line, true), i * 900 + 200);
+        seedTimeouts.push(setTimeout(() => pushLine(line, true), i * 900 + 200));
       });
 
       // Fetch mythology + glitchLines + delirLabels in one call. If the
@@ -365,7 +373,12 @@ export const Station = forwardRef<StationHandle, Props>(function Station({ stati
         })
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
-            if (!data || glitchModeRef.current !== capturedMode) return;
+            // Bail if this response is for a glitch that has already ended
+            // or been superseded by a new one (same mode is not enough).
+            if (!data) return;
+            if (glitchStartRef.current !== glitchToken) return;
+            if (stateRef.current !== "glitching") return;
+
             const existing = glitchAnalysisRef.current;
             glitchAnalysisRef.current = {
               detected: existing?.detected ?? true,
@@ -377,6 +390,18 @@ export const Station = forwardRef<StationHandle, Props>(function Station({ stati
               delirLabels: data.delirLabels || existing?.delirLabels || [],
             };
             if (mythRef.current && data.mythology) mythRef.current.textContent = data.mythology;
+
+            // Replace placeholder transcript lines with the generated ones.
+            const realLines: string[] = Array.isArray(data.glitchLines) ? data.glitchLines : [];
+            if (realLines.length) {
+              seedTimeouts.forEach(clearTimeout);
+              realLines.slice(0, 3).forEach((line, i) => {
+                setTimeout(() => {
+                  if (glitchStartRef.current !== glitchToken) return;
+                  pushLine(line, true);
+                }, i * 700 + 100);
+              });
+            }
           })
           .catch(() => {});
       }
@@ -388,6 +413,9 @@ export const Station = forwardRef<StationHandle, Props>(function Station({ stati
       const analysis = glitchAnalysisRef.current;
       stateRef.current = "live";
       glitchModeRef.current = null;
+      // Invalidate the glitch token so any in-flight mythology response
+      // for this glitch won't re-enter state after the anomaly is archived.
+      glitchStartRef.current = 0;
 
       if (statusRef.current) statusRef.current.innerHTML = `<span class="rec">REC</span>`;
       if (chRef.current) { chRef.current.classList.remove("anom"); chRef.current.classList.add("live"); }
@@ -528,7 +556,13 @@ export const Station = forwardRef<StationHandle, Props>(function Station({ stati
       const stream = (canvas as any).captureStream
         ? (canvas as HTMLCanvasElement).captureStream(15)
         : null;
-      if (!stream) return;
+      if (!stream) {
+        // Without captureStream we can't feed /api/motion; route this
+        // station to the /api/analyze vision fallback instead of leaving
+        // both loops dormant.
+        motionBlockedRef.current = true;
+        return;
+      }
       stopRecorder = startRollingClip(stream, {
         durationMs: 8000,
         mimeType: "video/webm;codecs=vp9",
